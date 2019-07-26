@@ -8,9 +8,9 @@ import (
 )
 
 type GoodsItem struct {
-	Id                       int `gorm:"primary_key"`             //主键
-	GoodsId                  int `gotm:"unique"`                  //（唯一健）
-	Itemid                   string                               //购买商品的ID	（唯一健）
+	Id                       int    `gorm:"primary_key"`          //主键
+	GoodsId                  int    `gotm:"unique"`               //（唯一健）
+	Itemid                   string `gotm:"unique"`               //购买商品的ID	（唯一健）
 	Itemtitle                string                               //商品标题
 	Itemshorttitle           string                               //短标题
 	Itemdesc                 string                               //商品简介

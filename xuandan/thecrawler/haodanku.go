@@ -20,7 +20,7 @@ type Preview struct {
 	Data Data `json:"data"`
 }
 type Data struct {
-	Front              []Front      `json:"front"` //	请求首页中的数据
+	Front              []Front      `json:"front"` //请求首页中的数据
 	Back               []Back       `json:"back"`
 	Fqcat              string       `json:"fqcat"`              //商品分类
 	Itemid             string       `json:"itemid"`             //购买商品的ID
@@ -71,6 +71,8 @@ type MaterialInfo struct {
 }
 
 var m sync.RWMutex
+var ch = make(chan struct{}, 100)
+
 //错误捕获
 func recoverName() {
 	if r := recover(); r != nil {
@@ -99,8 +101,9 @@ func PartPage(act, end int) {
 	}
 	myTicker := time.NewTicker(time.Minute * 5)
 	<-myTicker.C
-	runtime.Goexit()
 	go PartPage(act, end)
+	log.Println("更新前10页内容")
+	runtime.Goexit()
 }
 
 //全部页码
@@ -128,8 +131,9 @@ func AllPage() {
 	}
 	myTicker := time.NewTicker(time.Hour * 6)
 	<-myTicker.C
-	runtime.Goexit()
 	go AllPage()
+	log.Println("请求全部数据")
+	runtime.Goexit()
 }
 
 //数据处理
@@ -287,16 +291,30 @@ func OverdueGoods() {
 	defer recoverName()
 	db := models.Session
 	var count []int
-	m.RLock()
-	db.Model(&models.GoodsItem{}).Order("itemsale2 desc", true).Pluck("goods_id", &count)
-	m.RUnlock()
+	db.Model(&models.GoodsItem{}).Order("itemsale2 desc", true).Where("down_type = ?", 0).Pluck("goods_id", &count)
+	go updateOverdue(count)
 	for _, val := range count {
-		updateOverdueGoods(strconv.Itoa(val))
+		go updateOverdueGoods(strconv.Itoa(val))
+		//用来控制协程的数量
+		ch <- struct{}{}
 	}
-	myTicker := time.NewTicker(time.Minute * 5)
-	<-myTicker.C
-	runtime.Goexit()
+	log.Println("执行完毕。。。。。。。。。。。")
+
 	go OverdueGoods()
+	runtime.Goexit()
+}
+
+//只更新前300个
+func updateOverdue(count []int) {
+	counter := count[:300]
+	for _, val := range counter {
+
+		go updateOverdueGoods(strconv.Itoa(val))
+		ch <- struct{}{}
+	}
+	tick := time.NewTicker(time.Minute * 5)
+	<-tick.C
+	updateOverdue(count)
 
 }
 
@@ -321,9 +339,11 @@ func updateOverdueGoods(id string) {
 	down_type, _ := strconv.Atoi(goodsInform.Data.Down_type)
 	goodsid, _ := strconv.Atoi(id)
 	m.Lock()
-	err = db.Model(&models.GoodsItem{}).Order("itemsale2 desc", true).Where("goods_id=?", &goodsid).Update("down_type", &down_type).Error
+	err = db.Model(&models.GoodsItem{}).Where("goods_id = ?", goodsid).Update("down_type", down_type).Error
 	m.Unlock()
 	if err != nil {
 		log.Println("出错在哪里：", err)
 	}
+	<-ch
+	runtime.Goexit()
 }
